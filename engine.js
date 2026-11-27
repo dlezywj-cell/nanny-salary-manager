@@ -74,11 +74,20 @@
   }
 
   /**
-   * 统计 [startDate, endDate] 闭区间内的工作天数与休息天数
+   * 统计 [startDate, endDate] 闭区间内的工作天数、普通休息天数及节假日统计
+   * - 普通休息日 (restDatesSet): 不计薪、不计入工作日、顺延发薪
+   * - 节假日休息 (mode='rest'): 1倍工资，计入计薪工作日，不顺延发薪
+   * - 节假日工作 (mode='work'): 2倍工资，计入计薪工作日，不顺延发薪，额外+1倍日薪
    */
-  function countWorkAndRestDays(startDate, endDate, restDatesSet) {
+  function countWorkAndRestDays(startDate, endDate, restDatesSet, holidayMap) {
     if (endDate < startDate) {
-      return { workDays: 0, restDays: 0, totalCalendarDays: 0 };
+      return {
+        workDays: 0,
+        restDays: 0,
+        holidayRestDays: 0,
+        holidayWorkDays: 0,
+        totalCalendarDays: 0
+      };
     }
     var totalCalendarDays = diffCalendarDays(startDate, endDate) + 1;
     var restDays = 0;
@@ -87,9 +96,24 @@
         restDays += 1;
       }
     });
+    var holidayRestDays = 0;
+    var holidayWorkDays = 0;
+    if (holidayMap) {
+      Object.keys(holidayMap).forEach(function (d) {
+        if (d >= startDate && d <= endDate && !restDatesSet.has(d)) {
+          if (holidayMap[d].mode === 'work') {
+            holidayWorkDays += 1;
+          } else {
+            holidayRestDays += 1;
+          }
+        }
+      });
+    }
     return {
       workDays: Math.max(0, totalCalendarDays - restDays),
       restDays: restDays,
+      holidayRestDays: holidayRestDays,
+      holidayWorkDays: holidayWorkDays,
       totalCalendarDays: totalCalendarDays
     };
   }
@@ -143,6 +167,16 @@
     });
     var restSet = new Set(restList.map(function (r) { return r.date; }));
 
+    var holidayList = (state.holidays || []).slice().sort(function (a, b) {
+      return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    });
+    var holidayMap = {};
+    holidayList.forEach(function (h) {
+      if (!restSet.has(h.date)) {
+        holidayMap[h.date] = h;
+      }
+    });
+
     var paymentMap = {};
     (state.payments || []).forEach(function (p) {
       paymentMap[p.cycleIndex] = p;
@@ -151,10 +185,13 @@
     var hasStarted = today >= startDate;
     var daysUntilStart = hasStarted ? 0 : diffCalendarDays(today, startDate);
 
-    var counts = countWorkAndRestDays(startDate, today, restSet);
+    var counts = countWorkAndRestDays(startDate, today, restSet, holidayMap);
     var workDays = counts.workDays;
     var restDays = counts.restDays;
+    var holidayRestDays = counts.holidayRestDays;
+    var holidayWorkDays = counts.holidayWorkDays;
     var isTodayRest = restSet.has(today);
+    var todayHoliday = holidayMap[today] || null;
 
     // 计算已支付总额与已锁定的最大已支付周期
     var totalPaid = 0;
@@ -181,6 +218,7 @@
     });
     var totalCyclesToGenerate = Math.max(currentCycleEstimate + 2, maxExplicitCycle + 1, 4);
 
+    var dailyRate = cycleSalary / cycleDays;
     var cycles = [];
     for (var i = 1; i <= totalCyclesToGenerate; i++) {
       var workStart = (i - 1) * cycleDays + 1;
@@ -188,6 +226,17 @@
       var triggerWorkday = i * cycleDays + lagDays; // 第1期33天，第2期59天，第3期85天...
       var paymentRecord = paymentMap[i] || null;
       var isPaid = Boolean(paymentRecord && paymentRecord.paid);
+
+      var cycleStartDate = findDateForWorkday(startDate, workStart, restSet);
+      var cycleEndDate = findDateForWorkday(startDate, workEnd, restSet);
+      var cycleHolidayWorkDays = 0;
+      Object.keys(holidayMap).forEach(function (d) {
+        if (d >= cycleStartDate && d <= cycleEndDate && holidayMap[d].mode === 'work') {
+          cycleHolidayWorkDays += 1;
+        }
+      });
+      var holidayExtraAmount = round2(cycleHolidayWorkDays * dailyRate);
+      var expectedAmount = round2(cycleSalary + holidayExtraAmount);
 
       // 预计发薪日期：根据当前休息日动态计算（已支付的记录保留实际支付日期，不因后续休息日改变）
       var expectedPayDate = findDateForWorkday(startDate, triggerWorkday, restSet);
@@ -197,7 +246,10 @@
         workStart: workStart,
         workEnd: workEnd,
         triggerWorkday: triggerWorkday,
-        expectedAmount: cycleSalary,
+        baseAmount: cycleSalary,
+        holidayWorkDays: cycleHolidayWorkDays,
+        holidayExtraAmount: holidayExtraAmount,
+        expectedAmount: expectedAmount,
         expectedPayDate: expectedPayDate,
         paid: isPaid,
         actualDate: isPaid ? paymentRecord.actualDate : null,
@@ -219,12 +271,11 @@
       ? Math.max(0, nextCycle.triggerWorkday - workDays)
       : 0;
 
-    // 工资价值与暂缓/离职计算
-    var dailyRate = cycleSalary / cycleDays;
-    var totalEarned = round2(workDays * dailyRate);
+    // 工资价值与暂缓/离职计算（含节假日工作2倍工资的额外1倍日薪）
+    var holidayExtraTotal = round2(holidayWorkDays * dailyRate);
+    var totalEarned = round2((workDays + holidayWorkDays) * dailyRate);
     var totalUnpaidEarned = round2(Math.max(0, totalEarned - totalPaid));
 
-    // 当前暂缓支付（未满发薪触发点或滞后暂押部分）
     // 已完成周期数（按每 cycleDays 天一个周期）
     var completedCycles = Math.floor(workDays / cycleDays);
     var unpaidCompletedCyclesAmount = round2(
@@ -233,8 +284,6 @@
     var partialCycleDays = workDays % cycleDays;
     var partialCycleAmount = round2(partialCycleDays * dailyRate);
 
-    // 暂缓支付金额：在滞后支付模式下，已完成工作但尚未到发薪日/尚未发放的部分
-    // 具体表现为：如果已超过上个周期满额，则是暂押的滞后天数工资（最多 lagDays 天对应的金额，加上尚未满周期的在途工资）
     var heldSalary = totalUnpaidEarned;
 
     return {
@@ -248,7 +297,11 @@
       dailyRate: round2(dailyRate),
       workDays: workDays,
       restDays: restDays,
+      holidayRestDays: holidayRestDays,
+      holidayWorkDays: holidayWorkDays,
+      holidayExtraTotal: holidayExtraTotal,
       isTodayRest: isTodayRest,
+      todayHoliday: todayHoliday,
       totalPaid: totalPaid,
       paidCycleCount: paidCycleCount,
       totalEarned: totalEarned,
@@ -263,7 +316,8 @@
       remainingWorkdaysToNextPay: remainingWorkdaysToNextPay,
       nextCycleIndex: nextCycle ? nextCycle.cycleIndex : null,
       cycles: cycles,
-      restList: restList
+      restList: restList,
+      holidayList: holidayList
     };
   }
 
@@ -300,6 +354,9 @@
       startDate: dash.startDate,
       workDays: workDays,
       restDays: dash.restDays,
+      holidayRestDays: dash.holidayRestDays,
+      holidayWorkDays: dash.holidayWorkDays,
+      holidayExtraTotal: dash.holidayExtraTotal,
       dailyRate: round2(dailyRate),
       completedCycles: completedCycles,
       unpaidCompletedCyclesAmount: unpaidCompletedCycles,

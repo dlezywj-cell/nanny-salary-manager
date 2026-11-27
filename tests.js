@@ -11,6 +11,7 @@ function makeState(overrides = {}) {
       ...(overrides.settings || {})
     },
     restDates: overrides.restDates || [],
+    holidays: overrides.holidays || [],
     payments: overrides.payments || []
   };
 }
@@ -95,6 +96,42 @@ assert.strictEqual(Engine.diffCalendarDays('2027-11-07', '2027-12-10'), 33);
     resign.finalSettlement,
     Math.round(((60 / 26) * 8500 - 8500) * 100) / 100
   );
+}
+
+// 7. 节假日测试：节假日休息（1倍工资）-> 正常计入工作日，发薪日不顺延，工资为1倍
+{
+  const state = makeState({
+    holidays: [{ date: '2027-11-15', mode: 'rest', note: '节假日休息' }]
+  });
+  const dash = Engine.calculateDashboard(state, '2027-12-09');
+  assert.strictEqual(dash.workDays, 33);
+  assert.strictEqual(dash.holidayRestDays, 1);
+  assert.strictEqual(dash.holidayWorkDays, 0);
+  assert.strictEqual(dash.nextPayDate, '2027-12-09');
+  assert.strictEqual(dash.nextPayAmount, 8500);
+}
+
+// 8. 节假日测试：节假日工作（2倍工资）-> 正常计入工作日，发薪日不顺延，额外+1倍日薪
+{
+  const state = makeState({
+    holidays: [{ date: '2027-11-15', mode: 'work', note: '节假日加班' }]
+  });
+  const dash = Engine.calculateDashboard(state, '2027-12-09');
+  const dailyRate = 8500 / 26;
+  const expectedCycle1 = Math.round((8500 + dailyRate) * 100) / 100;
+  assert.strictEqual(dash.workDays, 33);
+  assert.strictEqual(dash.holidayWorkDays, 1);
+  assert.strictEqual(dash.nextPayDate, '2027-12-09');
+  assert.strictEqual(dash.nextPayAmount, expectedCycle1);
+  assert.strictEqual(dash.cycles[0].holidayExtraAmount, Math.round(dailyRate * 100) / 100);
+
+  // 若第1期按8826.92结清后离职，应结清剩余7天基础工资
+  const statePaid = makeState({
+    holidays: [{ date: '2027-11-15', mode: 'work', note: '节假日加班' }],
+    payments: [{ cycleIndex: 1, paid: true, actualDate: '2027-12-09', actualAmount: expectedCycle1 }]
+  });
+  const resign = Engine.calculateResignation(statePaid, '2027-12-09');
+  assert.strictEqual(resign.finalSettlement, Math.round(7 * dailyRate * 100) / 100);
 }
 
 console.log('All NannySalaryEngine tests passed!');

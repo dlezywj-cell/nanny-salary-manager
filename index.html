@@ -30,7 +30,18 @@
           </button>
           <button id="btn-rest-today" class="action-btn action-rest" type="button">
             <span class="action-title">今天休息</span>
-            <span id="btn-rest-sub" class="action-sub">自动顺延发薪日</span>
+            <span id="btn-rest-sub" class="action-sub">不发工资·顺延发薪日</span>
+          </button>
+        </div>
+
+        <div class="holiday-quick-bar">
+          <button id="btn-holiday-rest-today" class="holiday-quick-btn" type="button">
+            <span>🎉 今日节假日休息</span>
+            <small>1倍工资·不顺延</small>
+          </button>
+          <button id="btn-holiday-work-today" class="holiday-quick-btn is-double" type="button">
+            <span>✨ 今日节假日工作</span>
+            <small>2倍工资·+1倍日薪</small>
           </button>
         </div>
 
@@ -67,8 +78,12 @@
             <span id="m-work-days" class="metric-value highlight-blue">--</span>
           </div>
           <div class="metric-item">
-            <span class="metric-label">4. 累计休息天数</span>
+            <span class="metric-label">4. 累计普通休息天数</span>
             <span id="m-rest-days" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">节假日（1倍休 / 2倍班）</span>
+            <span id="m-holiday-summary" class="metric-value">--</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">5. 下一次发薪日期</span>
@@ -97,9 +112,9 @@
         </div>
       </section>
 
-      <!-- 休息日管理 -->
+      <!-- 休息日与节假日管理 -->
       <section id="tab-rest" class="tab-panel">
-        <div class="section-title">补录或标记休息日</div>
+        <div class="section-title">标记普通休息日（不发工资·顺延发薪）</div>
         <div class="ios-card form-card">
           <div class="form-row">
             <label for="rest-date-input">休息日期</label>
@@ -109,11 +124,37 @@
             <label for="rest-note-input">备注（选填）</label>
             <input id="rest-note-input" type="text" placeholder="如：调休、事假" maxlength="30" />
           </div>
-          <button id="btn-add-rest" class="primary-btn" type="button">添加休息日（自动顺延发薪）</button>
+          <button id="btn-add-rest" class="primary-btn" type="button">添加普通休息日（自动顺延发薪）</button>
+        </div>
+
+        <div class="section-title">标记法定节假日（1倍或2倍工资）</div>
+        <div class="ios-card form-card">
+          <div class="form-row">
+            <label for="holiday-date-input">节假日日期</label>
+            <input id="holiday-date-input" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="holiday-mode-select">出勤方式</label>
+            <select id="holiday-mode-select" class="ios-select">
+              <option value="rest">节假日休息（1倍工资）</option>
+              <option value="work">节假日工作（2倍工资）</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="holiday-note-input">节日名称（选填）</label>
+            <input id="holiday-note-input" type="text" placeholder="如：春节、国庆、中秋" maxlength="30" />
+          </div>
+          <button id="btn-add-holiday" class="primary-btn btn-holiday-save" type="button">保存节假日记录</button>
         </div>
 
         <div class="section-header-row">
-          <div class="section-title">休息日期历史记录</div>
+          <div class="section-title">法定节假日记录</div>
+          <span id="holiday-count-badge" class="count-badge">0 天</span>
+        </div>
+        <div id="holiday-history-list" class="ios-card list-card"></div>
+
+        <div class="section-header-row">
+          <div class="section-title">普通休息日历史记录</div>
           <span id="rest-count-badge" class="count-badge">0 天</span>
         </div>
         <div id="rest-history-list" class="ios-card list-card"></div>
@@ -164,6 +205,10 @@
             <div class="metric-item">
               <span class="metric-label">未满周期/暂押天数折算</span>
               <span id="r-partial-amount" class="metric-value">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">节假日2倍补贴（+1倍日薪）</span>
+              <span id="r-holiday-extra" class="metric-value">--</span>
             </div>
             <div class="metric-item">
               <span class="metric-label">已支付工资总额</span>
@@ -220,8 +265,8 @@
         <span class="tab-text">首页</span>
       </button>
       <button class="tab-item" data-tab="tab-rest" type="button">
-        <span class="tab-icon">☕</span>
-        <span class="tab-text">休息日</span>
+        <span class="tab-icon">📅</span>
+        <span class="tab-text">休假/节日</span>
       </button>
       <button class="tab-item" data-tab="tab-salary" type="button">
         <span class="tab-icon">💰</span>

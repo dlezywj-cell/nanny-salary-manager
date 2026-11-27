@@ -13,6 +13,7 @@
         lagDays: 7
       },
       restDates: [],
+      holidays: [],
       payments: []
     };
   }
@@ -25,6 +26,7 @@
       return {
         settings: Object.assign(getDefaultState().settings, parsed.settings || {}),
         restDates: Array.isArray(parsed.restDates) ? parsed.restDates : [],
+        holidays: Array.isArray(parsed.holidays) ? parsed.holidays : [],
         payments: Array.isArray(parsed.payments) ? parsed.payments : []
       };
     } catch (e) {
@@ -75,25 +77,42 @@
     if (!dash.hasStarted) {
       pill.textContent = '距上户还有 ' + dash.daysUntilStart + ' 天';
       pill.className = 'status-pill is-pending';
-      subtitle.textContent = '上户日期 ' + formatCNDate(dash.startDate) + '，可提前规划休息日';
+      subtitle.textContent = '上户日期 ' + formatCNDate(dash.startDate) + '，可提前规划休假与节日';
     } else if (dash.isTodayRest) {
-      pill.textContent = '今日已记休息';
+      pill.textContent = '今日已记普通休息';
       pill.className = 'status-pill is-rest';
-      subtitle.textContent = '今日不计入工作日，后续发薪日已自动顺延';
+      subtitle.textContent = '今日不发工资且不计工作日，后续发薪日已自动顺延';
+    } else if (dash.todayHoliday) {
+      var isDouble = dash.todayHoliday.mode === 'work';
+      pill.textContent = isDouble ? '今日节假日2倍' : '今日节假日1倍休';
+      pill.className = 'status-pill is-pending';
+      subtitle.textContent = isDouble
+        ? '节假日工作按2倍计薪（计1个工作日 + 1倍日薪补贴）'
+        : '节假日休息按1倍计薪（正常计入工作日，发薪不顺延）';
     } else {
       pill.textContent = '正常累计中';
       pill.className = 'status-pill';
-      subtitle.textContent = '默认每日自动累计工作日，休息时点击下方按钮';
+      subtitle.textContent = '默认每日自动累计工作日，休息或节假日点击下方按钮';
     }
 
-    btnWork.classList.toggle('is-active', !dash.isTodayRest);
+    btnWork.classList.toggle('is-active', !dash.isTodayRest && !dash.todayHoliday);
     btnRest.classList.toggle('is-active', dash.isTodayRest);
-    document.getElementById('btn-work-sub').textContent = dash.isTodayRest
-      ? '点击恢复今日为工作日'
-      : '默认自动累计';
+    document.getElementById('btn-holiday-rest-today').classList.toggle(
+      'is-active',
+      Boolean(dash.todayHoliday && dash.todayHoliday.mode === 'rest')
+    );
+    document.getElementById('btn-holiday-work-today').classList.toggle(
+      'is-active',
+      Boolean(dash.todayHoliday && dash.todayHoliday.mode === 'work')
+    );
+
+    document.getElementById('btn-work-sub').textContent =
+      dash.isTodayRest || dash.todayHoliday
+        ? '点击恢复今日为普通工作日'
+        : '默认自动累计';
     document.getElementById('btn-rest-sub').textContent = dash.isTodayRest
       ? '今日已标记休息'
-      : '自动顺延发薪日';
+      : '不发工资·顺延发薪日';
 
     // 主卡片
     document.getElementById('hero-next-date').textContent = formatCNDate(dash.nextPayDate);
@@ -108,6 +127,8 @@
     document.getElementById('m-today-date').textContent = formatCNDate(dash.today);
     document.getElementById('m-work-days').textContent = dash.workDays + ' 天';
     document.getElementById('m-rest-days').textContent = dash.restDays + ' 天';
+    document.getElementById('m-holiday-summary').textContent =
+      dash.holidayRestDays + ' 天 / ' + dash.holidayWorkDays + ' 天（+' + formatMoney(dash.holidayExtraTotal) + '）';
     document.getElementById('m-next-pay-date').textContent = formatCNDate(dash.nextPayDate);
     document.getElementById('m-remaining-days').textContent = dash.remainingWorkdaysToNextPay + ' 天';
     document.getElementById('m-next-pay-amount').textContent = formatMoney(dash.nextPayAmount);
@@ -116,9 +137,44 @@
     document.getElementById('m-resign-estimate').textContent = formatMoney(dash.estimatedResignSettlement);
 
     renderRestList(dash);
+    renderHolidayList(dash);
     renderSalaryCycles(dash);
     renderResignation();
     syncSettingsInputs();
+  }
+
+  function renderHolidayList(dash) {
+    var listEl = document.getElementById('holiday-history-list');
+    var sorted = dash.holidayList.slice().reverse();
+    document.getElementById('holiday-count-badge').textContent = sorted.length + ' 天';
+
+    if (sorted.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">暂无节假日记录。</div>';
+      return;
+    }
+
+    listEl.innerHTML = sorted
+      .map(function (item) {
+        var isWork = item.mode === 'work';
+        var badge = isWork
+          ? '<span class="badge badge-holiday-2x">2倍工资</span>'
+          : '<span class="badge badge-holiday-1x">1倍工资</span>';
+        var note = item.note
+          ? escapeHtml(item.note)
+          : isWork
+            ? '节假日工作（计1天+额外1倍日薪）'
+            : '节假日休息（1倍带薪·不顺延）';
+        return (
+          '<div class="rest-row">' +
+          '<div>' +
+          '<div class="rest-date-text">' + badge + formatCNDate(item.date) + '</div>' +
+          '<div class="rest-note-text">' + note + '</div>' +
+          '</div>' +
+          '<button class="delete-btn" data-remove-holiday="' + item.date + '" type="button">撤销</button>' +
+          '</div>'
+        );
+      })
+      .join('');
   }
 
   function renderRestList(dash) {
@@ -164,12 +220,16 @@
           ? '<button class="btn-small-ghost" data-unpay-cycle="' + c.cycleIndex + '" type="button">撤销已发状态</button>'
           : '<button class="btn-small-primary" data-pay-cycle="' + c.cycleIndex + '" data-default-date="' + c.expectedPayDate + '" data-default-amount="' + c.expectedAmount + '" type="button">确认已发工资</button>';
 
+        var extraLine = c.holidayWorkDays > 0
+          ? ' · 含节假日2倍补贴 +' + formatMoney(c.holidayExtraAmount)
+          : '';
+
         return (
           '<div class="cycle-card">' +
           '<div class="cycle-top">' +
           '<div>' +
           '<div class="cycle-title">第 ' + c.cycleIndex + ' 期工资</div>' +
-          '<div class="cycle-sub">对应第 ' + c.workStart + '–' + c.workEnd + ' 工作日 · 满 ' + c.triggerWorkday + ' 天发放</div>' +
+          '<div class="cycle-sub">对应第 ' + c.workStart + '–' + c.workEnd + ' 工作日 · 满 ' + c.triggerWorkday + ' 天发放' + extraLine + '</div>' +
           '</div>' +
           '<span class="badge ' + badgeClass + '">' + badgeText + '</span>' +
           '</div>' +
@@ -197,12 +257,14 @@
     document.getElementById('r-unpaid-cycles').textContent = formatMoney(res.unpaidCompletedCyclesAmount);
     document.getElementById('r-partial-amount').textContent =
       formatMoney(res.remainingDaysAmount) + '（' + res.remainingDays + '天）';
+    document.getElementById('r-holiday-extra').textContent =
+      formatMoney(res.holidayExtraTotal) + '（' + res.holidayWorkDays + '天）';
     document.getElementById('r-total-paid').textContent = formatMoney(res.totalPaid);
     document.getElementById('r-final-amount').textContent = formatMoney(res.finalSettlement);
     document.getElementById('r-explain-text').textContent =
-      '计算口径：按日薪约 ' + res.dailyRate + ' 元（' + state.settings.cycleSalary + '÷' + state.settings.cycleDays + '），累计工作 ' +
-      res.workDays + ' 天总应得 ' + formatMoney(res.totalEarned) + '，扣除已支付 ' + formatMoney(res.totalPaid) +
-      '，最终应结清 ' + formatMoney(res.finalSettlement) + '（已自动包含未结周期与暂押天数）。';
+      '计算口径：按日薪约 ' + res.dailyRate + ' 元（' + state.settings.cycleSalary + '÷' + state.settings.cycleDays + '），计薪工作日 ' +
+      res.workDays + ' 天 + 节假日2倍加班 ' + res.holidayWorkDays + ' 天，总应得 ' + formatMoney(res.totalEarned) +
+      '，扣除已支付 ' + formatMoney(res.totalPaid) + '，最终应结清 ' + formatMoney(res.finalSettlement) + '。';
   }
 
   function syncSettingsInputs() {
@@ -222,10 +284,12 @@
       showToast(formatCNDate(dateStr) + ' 已经标记为休息日，无需重复操作');
       return;
     }
+    // 普通休息与节假日互斥，避免同一天重复计算
+    state.holidays = state.holidays.filter(function (h) { return h.date !== dateStr; });
     state.restDates.push({ date: dateStr, note: note || '' });
     saveState();
     renderAll();
-    showToast('已标记 ' + formatCNDate(dateStr) + ' 为休息日，后续发薪日已顺延');
+    showToast('已标记 ' + formatCNDate(dateStr) + ' 为普通休息日，后续发薪日已顺延');
   }
 
   function removeRestDate(dateStr) {
@@ -233,6 +297,35 @@
     saveState();
     renderAll();
     showToast('已撤销 ' + formatCNDate(dateStr) + ' 的休息记录');
+  }
+
+  function setHolidayDate(dateStr, mode, note) {
+    if (!dateStr) {
+      showToast('请选择节假日日期');
+      return;
+    }
+    var existing = state.holidays.find(function (h) { return h.date === dateStr; });
+    if (existing && existing.mode === mode && (!note || existing.note === note)) {
+      showToast(formatCNDate(dateStr) + ' 已是该节假日状态');
+      return;
+    }
+    state.restDates = state.restDates.filter(function (r) { return r.date !== dateStr; });
+    state.holidays = state.holidays.filter(function (h) { return h.date !== dateStr; });
+    state.holidays.push({ date: dateStr, mode: mode, note: note || '' });
+    saveState();
+    renderAll();
+    showToast(
+      mode === 'work'
+        ? '已标记 ' + formatCNDate(dateStr) + ' 为节假日工作（2倍工资）'
+        : '已标记 ' + formatCNDate(dateStr) + ' 为节假日休息（1倍工资）'
+    );
+  }
+
+  function removeHolidayDate(dateStr) {
+    state.holidays = state.holidays.filter(function (h) { return h.date !== dateStr; });
+    saveState();
+    renderAll();
+    showToast('已撤销 ' + formatCNDate(dateStr) + ' 的节假日记录');
   }
 
   function escapeHtml(str) {
@@ -251,11 +344,38 @@
   document.getElementById('btn-work-today').addEventListener('click', function () {
     var today = Engine.getTodayStr();
     var isRest = state.restDates.some(function (r) { return r.date === today; });
-    if (isRest) {
-      removeRestDate(today);
+    var isHoliday = state.holidays.some(function (h) { return h.date === today; });
+    if (isRest || isHoliday) {
+      state.restDates = state.restDates.filter(function (r) { return r.date !== today; });
+      state.holidays = state.holidays.filter(function (h) { return h.date !== today; });
+      saveState();
+      renderAll();
+      showToast('已恢复今日为普通工作日');
     } else {
       showToast('今日已按正常工作日累计');
     }
+  });
+
+  document.getElementById('btn-holiday-rest-today').addEventListener('click', function () {
+    setHolidayDate(Engine.getTodayStr(), 'rest', '节假日休息');
+  });
+
+  document.getElementById('btn-holiday-work-today').addEventListener('click', function () {
+    setHolidayDate(Engine.getTodayStr(), 'work', '节假日工作');
+  });
+
+  document.getElementById('btn-add-holiday').addEventListener('click', function () {
+    var d = document.getElementById('holiday-date-input').value;
+    var mode = document.getElementById('holiday-mode-select').value;
+    var note = document.getElementById('holiday-note-input').value.trim();
+    setHolidayDate(d, mode, note);
+    document.getElementById('holiday-note-input').value = '';
+  });
+
+  document.getElementById('holiday-history-list').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-remove-holiday]');
+    if (!btn) return;
+    removeHolidayDate(btn.getAttribute('data-remove-holiday'));
   });
 
   document.getElementById('btn-add-rest').addEventListener('click', function () {
@@ -376,6 +496,7 @@
         state = {
           settings: Object.assign(getDefaultState().settings, parsed.settings),
           restDates: Array.isArray(parsed.restDates) ? parsed.restDates : [],
+          holidays: Array.isArray(parsed.holidays) ? parsed.holidays : [],
           payments: Array.isArray(parsed.payments) ? parsed.payments : []
         };
         saveState();
@@ -414,6 +535,7 @@
 
   // 初始化默认日期输入并渲染
   document.getElementById('rest-date-input').value = Engine.getTodayStr();
+  document.getElementById('holiday-date-input').value = Engine.getTodayStr();
   document.getElementById('resign-date-input').value = Engine.getTodayStr();
   renderAll();
 })();
