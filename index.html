@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="育儿嫂工资" />
+  <meta name="theme-color" content="#F2F2F7" />
+  <title>育儿嫂工资管理</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="header-top">
+        <h1>育儿嫂工资管理</h1>
+        <span id="status-pill" class="status-pill">正常累计中</span>
+      </div>
+      <p id="header-subtitle" class="header-subtitle">默认每日自动累计工作日，休息时点击下方按钮</p>
+    </header>
+
+    <main class="app-content">
+      <!-- 首页仪表盘 -->
+      <section id="tab-home" class="tab-panel active">
+        <div class="action-grid">
+          <button id="btn-work-today" class="action-btn action-work" type="button">
+            <span class="action-title">今天正常工作</span>
+            <span id="btn-work-sub" class="action-sub">默认自动累计</span>
+          </button>
+          <button id="btn-rest-today" class="action-btn action-rest" type="button">
+            <span class="action-title">今天休息</span>
+            <span id="btn-rest-sub" class="action-sub">自动顺延发薪日</span>
+          </button>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-row">
+            <div>
+              <div class="hero-label">下一次发薪</div>
+              <div id="hero-next-date" class="hero-date">--</div>
+            </div>
+            <div class="hero-right">
+              <div class="hero-label">发薪金额</div>
+              <div id="hero-next-amount" class="hero-amount">--</div>
+            </div>
+          </div>
+          <div class="hero-divider"></div>
+          <div class="hero-footer">
+            <span>距离下一次发薪</span>
+            <strong id="hero-remaining-days" class="hero-remaining">--</strong>
+          </div>
+        </div>
+
+        <div class="section-title">核心数据总览</div>
+        <div class="ios-card metric-list">
+          <div class="metric-item">
+            <span class="metric-label">1. 阿姨上户日期</span>
+            <span id="m-start-date" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">2. 今日日期</span>
+            <span id="m-today-date" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">3. 累计工作天数</span>
+            <span id="m-work-days" class="metric-value highlight-blue">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">4. 累计休息天数</span>
+            <span id="m-rest-days" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">5. 下一次发薪日期</span>
+            <span id="m-next-pay-date" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">6. 距下次发薪剩余工作日</span>
+            <span id="m-remaining-days" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">7. 下一次应发工资金额</span>
+            <span id="m-next-pay-amount" class="metric-value">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">8. 已累计支付工资总额</span>
+            <span id="m-total-paid" class="metric-value highlight-green">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">9. 当前暂缓支付工资金额</span>
+            <span id="m-held-salary" class="metric-value highlight-orange">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">10. 预计离职需结清金额</span>
+            <span id="m-resign-estimate" class="metric-value highlight-orange">--</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 休息日管理 -->
+      <section id="tab-rest" class="tab-panel">
+        <div class="section-title">补录或标记休息日</div>
+        <div class="ios-card form-card">
+          <div class="form-row">
+            <label for="rest-date-input">休息日期</label>
+            <input id="rest-date-input" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="rest-note-input">备注（选填）</label>
+            <input id="rest-note-input" type="text" placeholder="如：调休、事假" maxlength="30" />
+          </div>
+          <button id="btn-add-rest" class="primary-btn" type="button">添加休息日（自动顺延发薪）</button>
+        </div>
+
+        <div class="section-header-row">
+          <div class="section-title">休息日期历史记录</div>
+          <span id="rest-count-badge" class="count-badge">0 天</span>
+        </div>
+        <div id="rest-history-list" class="ios-card list-card"></div>
+      </section>
+
+      <!-- 工资记录 -->
+      <section id="tab-salary" class="tab-panel">
+        <div class="ios-card summary-strip">
+          <div>
+            <div class="strip-label">已发期数</div>
+            <div id="s-paid-count" class="strip-value">0 期</div>
+          </div>
+          <div>
+            <div class="strip-label">已付总额</div>
+            <div id="s-paid-total" class="strip-value">0 元</div>
+          </div>
+          <div>
+            <div class="strip-label">暂缓/未结</div>
+            <div id="s-unpaid-total" class="strip-value">0 元</div>
+          </div>
+        </div>
+
+        <div class="section-title">发薪周期与记录</div>
+        <div id="salary-cycles-list" class="cycles-stack"></div>
+      </section>
+
+      <!-- 离职结算与设置 -->
+      <section id="tab-settings" class="tab-panel">
+        <div class="section-title">阿姨离职结算</div>
+        <div class="ios-card form-card">
+          <div class="form-row">
+            <label for="resign-date-input">预计/实际离职日期</label>
+            <input id="resign-date-input" type="date" />
+          </div>
+          <div class="resign-breakdown">
+            <div class="metric-item">
+              <span class="metric-label">累计实际工作天数</span>
+              <span id="r-work-days" class="metric-value">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">累计休息天数</span>
+              <span id="r-rest-days" class="metric-value">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">已完成但未支付周期工资</span>
+              <span id="r-unpaid-cycles" class="metric-value">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">未满周期/暂押天数折算</span>
+              <span id="r-partial-amount" class="metric-value">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">已支付工资总额</span>
+              <span id="r-total-paid" class="metric-value highlight-green">--</span>
+            </div>
+            <div class="metric-item total-row">
+              <span class="metric-label">最终应结算金额</span>
+              <span id="r-final-amount" class="metric-value highlight-red">--</span>
+            </div>
+          </div>
+          <p id="r-explain-text" class="hint-text"></p>
+        </div>
+
+        <div class="section-title">工资规则设置</div>
+        <div class="ios-card form-card">
+          <div class="form-row">
+            <label for="set-start-date">上户日期</label>
+            <input id="set-start-date" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="set-cycle-days">每周期工作日（天）</label>
+            <input id="set-cycle-days" type="number" min="1" max="365" inputmode="numeric" />
+          </div>
+          <div class="form-row">
+            <label for="set-cycle-salary">每周期工资（元）</label>
+            <input id="set-cycle-salary" type="number" min="1" step="100" inputmode="numeric" />
+          </div>
+          <div class="form-row">
+            <label for="set-lag-days">工资滞后支付（工作日）</label>
+            <input id="set-lag-days" type="number" min="0" max="60" inputmode="numeric" />
+          </div>
+          <button id="btn-save-settings" class="primary-btn" type="button">保存规则设置</button>
+        </div>
+
+        <div class="section-title">数据备份与恢复</div>
+        <div class="ios-card form-card">
+          <div class="backup-actions">
+            <button id="btn-export-json" class="secondary-btn" type="button">导出备份文件</button>
+            <button id="btn-copy-json" class="secondary-btn" type="button">复制备份内容</button>
+          </div>
+          <label class="file-upload-btn" for="input-import-json">
+            从备份文件恢复数据
+            <input id="input-import-json" type="file" accept=".json,application/json" hidden />
+          </label>
+          <button id="btn-reset-data" class="danger-link-btn" type="button">恢复默认初始数据</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- 底部导航栏 -->
+    <nav class="tab-bar" aria-label="主导航">
+      <button class="tab-item active" data-tab="tab-home" type="button">
+        <span class="tab-icon">🏠</span>
+        <span class="tab-text">首页</span>
+      </button>
+      <button class="tab-item" data-tab="tab-rest" type="button">
+        <span class="tab-icon">☕</span>
+        <span class="tab-text">休息日</span>
+      </button>
+      <button class="tab-item" data-tab="tab-salary" type="button">
+        <span class="tab-icon">💰</span>
+        <span class="tab-text">工资记录</span>
+      </button>
+      <button class="tab-item" data-tab="tab-settings" type="button">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-text">离职/设置</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- 确认发薪弹窗 -->
+  <div id="pay-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 id="pay-modal-title">确认已发工资</h2>
+        <button id="btn-close-modal" class="modal-close" type="button">取消</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label for="modal-pay-date">实际发薪日期</label>
+          <input id="modal-pay-date" type="date" />
+        </div>
+        <div class="form-row">
+          <label for="modal-pay-amount">实际支付金额（元）</label>
+          <input id="modal-pay-amount" type="number" step="0.01" inputmode="decimal" />
+        </div>
+        <button id="btn-confirm-pay" class="primary-btn" type="button">确认已发放</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
